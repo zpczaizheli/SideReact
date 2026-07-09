@@ -4,7 +4,7 @@
 Interpretable Side Reaction Detection via Atom Representations Derived from Multi-tier Reaction Perspectives
 
 ## Overview
-<img width="3248" height="4744" alt="Model-overview" src="https://github.com/user-attachments/assets/b41c8271-041a-4182-8cec-c1f3adb9b46c" />
+<img width="3244" height="4716" alt="流程图" src="https://github.com/user-attachments/assets/64cc8469-8a53-4904-afa5-1a29c0cb04ea" />
 
 
 ## Environment Requirements
