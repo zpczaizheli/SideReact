@@ -1,0 +1,15 @@
+Model Training with Qwen2.5
+This project fine-tunes Qwen2.5-0.5B-Instruct, a lightweight instruction-tuned language model developed by Alibaba Cloud. It is designed for natural language understanding and generation tasks.
+The model can be downloaded from the official Hugging Face repository:
+https://huggingface.co/Qwen/Qwen2.5-0.5B-Instruct
+Execute the training script to fine-tune the model:
+dataset:50k-all.csv
+
+Train:
+	python train_50k.py
+
+Get atom features:
+	get_atom_feature.py
+
+Atom Features File:
+	Data_reaction_atom_features_reactants.xlsx

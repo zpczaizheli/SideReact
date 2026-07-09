@@ -1,0 +1,86 @@
+import datetime
+
+import pandas as pd
+import torch
+from transformers import AutoTokenizer, AutoModelForCausalLM, DataCollatorForSeq2Seq, TrainingArguments, Trainer
+from datasets import Dataset
+
+
+
+def process_func(example):
+    MAX_LENGTH = 1024  
+    output_group_length = 128  
+    input_group_length = MAX_LENGTH - output_group_length  
+
+    p = 'Enter the reaction formula and output the reaction category [1-10], a total of 10 types. \n No need to provide the specific process, just give the answer directly.\nexample1：\ninput：IC[I:10].N[c:9]1[s:8][cH:7][c:6]([C:4]([O:3][CH2:2][CH3:1])=[O:5])[n:11]1>>[CH3:1][CH2:2][O:3][C:4](=[O:5])[c:6]1[cH:7][s:8][c:9]([I:10])[n:11]1\noutput：9\nexample2：\ninput：[N:1]#[C:2][CH:3]1[CH2:4][CH:5]1[C:6](=[O:7])[c:8]1[cH:9][cH:10][c:11]([Cl:12])[cH:13][c:14]1[F:15]>>[N:1]#[C:2][CH:3]1[CH2:4][CH:5]1[CH:6]([OH:7])[c:8]1[cH:9][cH:10][c:11]([Cl:12])[cH:13][c:14]1[F:15]\noutput：7'
+
+    instruction_input = example['rxn_smiles']
+    response_output = str(example['class'])
+    instruction = tokenizer(
+        "<|im_start|>system\n"+p+"<|im_end|>\n<|im_start|>user\n" + instruction_input + "<|im_end|>\n<|im_start|>assistant\n",
+        add_special_tokens=False,
+        truncation=True,
+        max_length=input_group_length
+    )
+
+    response = tokenizer(
+        response_output + "<|im_end|>",
+        add_special_tokens=False,
+        truncation=True,
+        max_length=output_group_length
+    )
+
+    input_ids = instruction['input_ids'] + response['input_ids'] + [tokenizer.pad_token_id]
+    attention_mask = instruction['attention_mask'] + response['attention_mask'] + [1]
+    labels = [-100] * len(instruction['input_ids']) + response['input_ids'] + [tokenizer.pad_token_id]
+
+    if len(input_ids) > MAX_LENGTH:
+        input_ids = input_ids[:MAX_LENGTH]
+        attention_mask = attention_mask[:MAX_LENGTH]
+        labels = labels[:MAX_LENGTH]
+
+    return {"input_ids": input_ids, "attention_mask": attention_mask, "labels": labels}
+
+
+checkpoint_save_path = datetime.datetime.now().strftime("%Y%m%d%H")
+
+print('Loading tokenizer')
+tokenizer = AutoTokenizer.from_pretrained('pretrain_model/Qwen2___5-0___5B-Instruct', use_fast=False,
+                                          trust_remote_code=True)
+tokenizer.pad_token = tokenizer.eos_token
+
+print('Loading model')
+model = AutoModelForCausalLM.from_pretrained('pretrain_model/Qwen2___5-0___5B-Instruct', device_map="auto", torch_dtype=torch.bfloat16)
+model.enable_input_require_grads()
+
+print('Loading dataset')
+df = pd.read_csv('data/50k-all.csv')
+ds = Dataset.from_pandas(df)
+tokenized_id = ds.map(process_func, remove_columns=ds.column_names)
+
+training_args = TrainingArguments(
+    output_dir="50k_model/" + checkpoint_save_path,  
+    learning_rate=5e-5, 
+    lr_scheduler_type="cosine",
+    logging_steps=100, 
+    max_steps=200000,  
+
+    save_steps=10000,  
+    gradient_accumulation_steps=1,  
+    gradient_checkpointing=True,
+    gradient_checkpointing_kwargs={"use_reentrant": False},
+    bf16=True,
+    remove_unused_columns=False,
+    report_to=["tensorboard"]
+)
+trainer = Trainer(
+    model=model,
+    args=training_args,
+    train_dataset=tokenized_id,
+    data_collator=DataCollatorForSeq2Seq(tokenizer=tokenizer, padding=True),    
+)
+
+
+trainer.train()
+
+trainer.save_model(training_args.output_dir)
